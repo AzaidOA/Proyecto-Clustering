@@ -1,0 +1,121 @@
+---
+title: "Proyecto Clustering: Programa"
+author: "Manuel Azaid Ordaz Arias"
+date: "9/4/2021"
+output: html_document
+---
+## 1. Correr BLASTP de todas las secuencias contra todas las secuencias.
+![comando blastp](C:/Users/Azaid/Pictures/Screenshots/blastp.png)
+
+```{r}
+library(cluster)
+library(stringr)
+suppressPackageStartupMessages(library(factoextra))
+suppressPackageStartupMessages(library(dendextend))
+suppressPackageStartupMessages(library(ape))
+```
+## 2. Generar una matriz de disimilitud (distancia) con base en los bit scores generados
+```{r}
+parser <- readLines("ABC_out.txt")
+index <- which(!is.na(str_extract(parser, "hits found")))
+obser <- as.numeric(str_extract(parser[index], "\\d+"))
+prot <- c()
+for (line in parser[6:105]) {
+   t_line <- unlist(str_split(line,"\t"))
+   prot <- append(prot, t_line[2])
+   
+}
+prot <- prot[order(prot)]
+df <- data.frame(matrix(NA, nrow = 0, ncol = 100))
+for (n in 1:length(index)) {
+   i <- index[n]
+   o <- obser[n]
+   v_temp <- c()
+   for (line in parser[(i+1):(i+o)]) {
+      t_line <- unlist(str_split(line,"\t"))
+      bit_s <- t_line[length(t_line)]
+      v_temp <- append(v_temp, bit_s)
+      names(v_temp)[length(v_temp)] <- t_line[2]
+   }
+   v_temp <- v_temp[order(names(v_temp))]
+   if (o < 100) {
+      miss <- is.na(match(prot, names(v_temp)))
+      miss <- prot[miss]
+      v_temp <- c(v_temp,rep(0, length(miss)))
+      names(v_temp)[(length(v_temp)-length(miss)+1):length(v_temp)] <- miss
+      v_temp <- v_temp[order(names(v_temp))]
+   }
+   df <- rbind(df,as.numeric(v_temp))
+   rownames(df)[n] <- t_line[1]
+   cheker <- prot == names(v_temp)
+}
+colnames(df) <- prot
+df <- df[order(rownames(df)),]
+head(df,c(3,10))
+```
+## 3. Normalizar las disimilitudes (d) para que queden en el rango [0,1].
+Ignorando las comparaciones en la diagonal de la matriz de distancia, Calcular un bit score
+normalizado (Bi,j) por cada par the proteins i, j dividiendo todos los bit scores (bi,j) por el valor del bitscore más alto:
+![Formula Normalizacion](C:/Users/Azaid/Pictures/Screenshots/formula.png)
+```{r}
+dis_df <- df
+for (i in 1:length(dis_df)) {
+   dis_df[i,i] <- 0   
+}
+m <- max(dis_df)
+for (i in 1:length(dis_df)) {
+   for (j in 1:length(dis_df)) {
+      if (i == j) 
+         next
+      dis_df[i,j] <- 1 - (dis_df[i,j]/m)
+   }
+}
+head(dis_df,c(3,10))
+```
+## 4. Correr clustering jerárquico y correr varios métodos para obtener el número de clusters. 
+## 5. Salvar el dendograma como árbol filogenético en formato Newick en R.
+```{r}
+#clustering jerarquico
+#Run  clustering and build the dendogram
+ccom <- hclust(dist(dis_df, method = "euclidean"), method = "complete")
+csin <- hclust(dist(dis_df, method = "euclidean"), method = "single")
+cave <- hclust(dist(dis_df, method = "euclidean"), method = "average")
+cwar <- hclust(dist(dis_df, method = "euclidean"), method = "ward.D2")
+
+#Save tree in Newick format
+com_tree <- as.phylo(ccom)
+sin_tree <- as.phylo(csin)
+ave_tree <- as.phylo(cave)
+war_tree <- as.phylo(cwar)
+
+write.tree(phy=com_tree, file="com_tree.tree")  
+write.tree(phy =sin_tree, file = "sin_tree.tree")
+write.tree(phy =ave_tree, file = "ave_tree.tree")
+write.tree(phy =war_tree, file = "war_tree.tree")
+```
+## 7. Comparar los árboles obtenidos cuando se aplican los métodos single, average, complete y ward
+### Complete
+![Complete Tree](C:/Users/Azaid/Pictures/Screenshots/com_tree.png)
+
+### Single
+![Single Tree](C:/Users/Azaid/Pictures/Screenshots/sin_tree.png)
+
+### Average
+![Average Tree](C:/Users/Azaid/Pictures/Screenshots/ave_tree.png)
+
+### Ward
+![Ward Tree](C:/Users/Azaid/Pictures/Screenshots/war_tree.png)
+
+8. Obtener el "Agglomerative Coefficient" de todos los árboles.
+```{r}
+coef_com <- coef(ccom)
+sprintf("El coeficiente de aglomeracion del arbol con el metodo complete es: %f", coef_com)
+coef_sin <- coef(csin)
+sprintf("El coeficiente de aglomeracion del arbol con el metodo single es: %f", coef_sin)
+coef_ave <- coef(cave)
+sprintf("El coeficiente de aglomeracion del arbol con el metodo average es: %f", coef_ave)
+coef_war <- coef(cwar)
+sprintf("El coeficiente de aglomeracion del arbol con el metodo ward es: %f", coef_war)
+
+```
+
